@@ -1,0 +1,117 @@
+[tools]
+"node" = "22"
+"pnpm" = "latest"
+
+[settings]
+# Node.js 下载镜像（国内加速）
+node.mirror_url = "https://npmmirror.com/mirrors/node/"
+
+[env]
+# === 环境变量 ===
+
+# LM Studio API 配置
+LM_STUDIO_API_URL = "http://127.0.0.1:1234"
+# 后端服务端口
+PORT = "3001"
+# 前端开发服务器端口
+VITE_PORT = "5173"
+
+# === Node.js 配置 ===
+NODE_OPTIONS = "--max-old-space-size=4096"
+
+# === pnpm 国内镜像 ===
+pnpm_config_registry = "https://registry.npmmirror.com/"
+
+# === Python 镜像配置（如果需要）===
+# PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
+
+[tasks.install]
+description = "安装所有项目依赖（使用 pnpm）"
+run = [
+  "cd backend && mise exec -- pnpm install",
+  "cd frontend && mise exec -- pnpm install",
+]
+
+[tasks.install-backend]
+description = "安装后端依赖（pnpm）"
+run = "cd backend && mise exec -- pnpm install"
+
+[tasks.install-frontend]
+description = "安装前端依赖（pnpm）"
+run = "cd frontend && mise exec -- pnpm install"
+
+[tasks.build]
+description = "构建所有项目"
+depends = ["build-backend", "build-frontend"]
+
+[tasks.build-backend]
+description = "构建后端代码"
+run = "cd backend && mise exec -- pnpm run build"
+
+[tasks.build-frontend]
+description = "构建前端代码"
+run = "cd frontend && mise exec -- pnpm run build"
+
+[tasks.dev]
+description = "同时启动后端和前端开发服务器（需要两个终端）"
+run = """
+Write-Output "请分别运行以下两个命令："
+Write-Output "  mise run dev-backend"
+Write-Output "  mise run dev-frontend"
+"""
+shell = "powershell"
+
+[tasks.dev-backend]
+description = "启动后端开发服务器"
+run = "cd backend && mise exec -- pnpm run dev"
+
+[tasks.dev-frontend]
+description = "启动前端开发服务器"
+run = "cd frontend && mise exec -- pnpm run dev"
+
+[tasks.doctor]
+description = "检查项目环境状态"
+run = """
+Write-Output "=== mise 工具版本 ==="
+mise current
+Write-Output ""
+Write-Output "=== Node.js ==="
+mise exec -- node --version
+Write-Output ""
+Write-Output "=== pnpm ==="
+mise exec -- pnpm --version
+Write-Output "  registry: $(mise exec -- pnpm config get registry)"
+Write-Output ""
+Write-Output "=== 后端依赖 ==="
+if (Test-Path backend/node_modules) { Write-Output "  ✓ 已安装" } else { Write-Output "  ✗ 未安装" }
+Write-Output ""
+Write-Output "=== 前端依赖 ==="
+if (Test-Path frontend/node_modules) { Write-Output "  ✓ 已安装" } else { Write-Output "  ✗ 未安装" }
+Write-Output ""
+Write-Output "=== LM Studio ==="
+try {
+  $r = Invoke-RestMethod -Uri http://localhost:1234/v1/health -TimeoutSec 3
+  Write-Output "  ✓ 已连接"
+} catch {
+  Write-Output "  ✗ 未连接（请启动 LM Studio）"
+}
+"""
+shell = "powershell"
+
+[tasks.clean]
+description = "清理构建产物和 node_modules（pnpm store prune）"
+run = """
+Remove-Item -Recurse -Force backend/dist, frontend/dist -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force backend/node_modules, frontend/node_modules -ErrorAction SilentlyContinue
+mise exec -- pnpm store prune
+Write-Output "✓ 清理完成"
+"""
+shell = "powershell"
+
+[tasks.clean-cache]
+description = "清理 pnpm 缓存"
+run = "mise exec -- pnpm store prune"
+
+[shell_alias]
+ll = "ls -la"
+gs = "git status"

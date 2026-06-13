@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>俄罗斯方块</title>
+    <style>
+        canvas {
+            background-color: #000;
+        }
+    </style>
+</head>
+<body>
+<canvas id="gameCanvas" width="300" height="600"></canvas>
+
+<script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const gridSize = 30;
+    const cols = canvas.width / gridSize;
+    const rows = canvas.height / gridSize;
+    
+    let board = [];
+    for (let r = 0; r < rows; r++) {
+        board[r] = [];
+        for (let c = 0; c < cols; c++) {
+            board[r][c] = 0;
+        }
+    }
+
+    const tetrominoes = [
+        [[1, 1], [1, 1]], // O
+        [[1, 1, 1, 1]],   // I
+        [[1, 1, 1], [0, 1, 0]], // T
+        [[1, 1, 0], [0, 1, 1]], // S
+        [[0, 1, 1], [1, 1, 0]], // Z
+        [[1, 1, 1], [1, 0, 0]], // L
+        [[1, 1, 1], [0, 0, 1]]  // J
+    ];
+
+    let currentTetromino = {
+        shape: tetrominoes[Math.floor(Math.random() * tetrominoes.length)],
+        x: Math.floor(cols / 2) - 1,
+        y: 0,
+        color: getRandomColor(),
+    };
+
+    function drawGrid() {
+        ctx.strokeStyle = "#999";
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                ctx.strokeRect(c * gridSize, r * gridSize, gridSize - 1, gridSize - 1);
+            }
+        }
+    }
+
+    function drawTetromino(tetromino) {
+        tetromino.shape.forEach((row, y) => {
+            row.forEach((value, x) => {
+                if (value !== 0) {
+                    ctx.fillStyle = tetromino.color;
+                    ctx.fillRect((tetromino.x + x) * gridSize, (tetromino.y + y) * gridSize, gridSize - 1, gridSize - 1);
+                }
+            });
+        });
+    }
+
+    function clearBoard() {
+        board.forEach(row => row.fill(0));
+    }
+
+    function mergeToBoard(tetromino) {
+        tetromino.shape.forEach((row, y) => {
+            row.forEach((value, x) => {
+                if (value !== 0) {
+                    board[tetromino.y + y][tetromino.x + x] = value;
+                }
+            });
+        });
+    }
+
+    function isCollision(tetromino) {
+        return tetromino.shape.some((row, y) => {
+            return row.some((value, x) => {
+                if (value !== 0) {
+                    const newX = tetromino.x + x;
+                    const newY = tetromino.y + y;
+                    
+                    // Check out of bounds
+                    if (newX < 0 || newX >= cols || newY >= rows) {
+                        return true;
+                    }
+
+                    // Check collision with existing board cells
+                    if (newY >= 0 && board[newY][newX] !== 0) {
+                        return true;
+                    }
+                }
+                return false;
+            });
+        });
+    }
+
+    function freezeTetromino() {
+        mergeToBoard(currentTetromino);
+        currentTetromino = generateNewTetromino();
+    }
+
+    function rotateTetromino(tetromino) {
+        const rotatedShape = tetromino.shape[0].map((_, index) => 
+            tetromino.shape.map(row => row[index]).reverse()
+        );
+        
+        const tempTetromino = { ...tetromino, shape: rotatedShape };
+
+        if (!isCollision(tempTetromino)) {
+            tetromino.shape = rotatedShape;
+        } else {
+            // Undo rotation if there's a collision
+            tetromino.shape.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    tempTetromino.shape[x][y] = value;
+                });
+            });
+
+            const rotatedAgainShape = tempTetromino.shape[0].map((_, index) => 
+                tempTetromino.shape.map(row => row[index]).reverse()
+            );
+
+            if (!isCollision({ ...tetromino, shape: rotatedAgainShape })) {
+                tetromino.shape = rotatedAgainShape;
+            } else {
+                // If still can't rotate, revert to original
+                tetromino.shape = tempTetromino.shape[0].map((_, index) => 
+                    tempTetromino.shape.map(row => row[index]).reverse()
+                );
+            }
+        }
+    }
+
+    function generateNewTetromino() {
+        return {
+            shape: tetrominoes[Math.floor(Math.random() * tetrominoes.length)],
+            x: Math.floor(cols / 2) - 1,
+            y: 0,
+            color: getRandomColor(),
+        };
+    }
+
+    function getRandomColor() {
+        const hue = (Date.now() % 360); // To change color over time
+        return `hsl(${hue}, 75%, 50%)`;
+    }
+    
+    let intervalId = setInterval(() => {
+        currentTetromino.y++;
+        
+        if (isCollision(currentTetromino)) {
+            currentTetromino.y--;
+            freezeTetromino();
+            
+            // Check for completed lines and remove them
+            clearBoard();
+            mergeToBoard(currentTetromino);
+
+            let linesCleared = 0;
+            for (let r = rows - 1; r >= 0; r--) {
+                if (board[r].every(cell => cell !== 0)) {
+                    board.splice(r, 1);
+                    board.unshift(Array(cols).fill(0));
+                    linesCleared++;
+                }
+            }
+
+            // Game Over condition
+            if (isCollision(currentTetromino)) {
+                clearInterval(intervalId);
+                alert("Game Over!");
+            }
+        }
+        
+        draw();
+    }, 1000 / 25);
+    
+    document.addEventListener('keydown', event => {
+        switch(event.keyCode) {
+            case 37: // Left arrow
+                currentTetromino.x--;
+                if (isCollision(currentTetromino)) {
+                    currentTetromino.x++;
+                }
+                break;
+            case 38: // Up arrow
+                rotateTetromino(currentTetromino);
+                break;
+            case 39: // Right arrow
+                currentTetromino.x++;
+                if (isCollision(currentTetromino)) {
+                    currentTetromino.x--;
+                }
+                break;
+            case 40: // Down arrow
+                currentTetromino.y++;
+                if (isCollision(currentTetromino)) {
+                    currentTetromino.y--;
+                }
+                break;
+        }
+    });
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        board.forEach((row, y) => {
+            row.forEach((value, x) => {
+                if (value !== 0) {
+                    ctx.fillStyle = getRandomColor(); // Use a different color for each block on the board
+                    ctx.fillRect(x * gridSize, y * gridSize, gridSize - 1, gridSize - 1);
+                }
+            });
+        });
+
+        drawTetromino(currentTetromino);
+    }
+    
+    // Start game loop
+    draw();
+</script>
+</body>
+</html>

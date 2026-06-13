@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>俄罗斯方块</title>
+    <style>
+        #game {
+            width: 300px;
+            height: 600px;
+            background-color: black;
+            position: relative;
+        }
+        .piece {
+            position: absolute;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game"></div>
+<button onclick="startGame()">开始游戏</button>
+
+<script>
+const game = document.getElementById('game');
+let currentPiece, pieceX, pieceY, intervalId;
+const boardWidth = 10;
+const boardHeight = 20;
+const board = Array(boardHeight).fill().map(() => Array(boardWidth).fill(0));
+
+function createPiece() {
+    const shapes = [
+        [[1, 1], [1, 1]],
+        [[1, 1, 1], [0, 1, 0]],
+        [[1, 1, 1], [1, 0, 0]],
+        [[1, 1, 1], [0, 0, 1]],
+        [[1, 1, 0], [0, 1, 1]]
+    ];
+    return shapes[Math.floor(Math.random() * shapes.length)];
+}
+
+function drawPiece() {
+    currentPiece.forEach((row, y) => {
+        row.forEach((cell, x) => {
+            if (cell) {
+                const block = document.createElement('div');
+                block.className = 'piece';
+                block.style.width = '20px';
+                block.style.height = '20px';
+                block.style.backgroundColor = getRandomColor();
+                block.style.left = `${(pieceX + x) * 30}px`;
+                block.style.top = `${(pieceY + y) * 30}px`;
+                game.appendChild(block);
+            }
+        });
+    });
+}
+
+function getRandomColor() {
+    return `hsl(${Math.random() * 360}, 50%, 50%)`;
+}
+
+function movePiece(direction) {
+    if (direction === 'left' && pieceX > 0) {
+        pieceX--;
+    } else if (direction === 'right' && pieceX < boardWidth - currentPiece[0].length) {
+        pieceX++;
+    } else if (direction === 'down') {
+        pieceY++;
+    }
+
+    // Clear previous piece
+    game.innerHTML = '';
+    
+    // Draw updated position of the piece
+    drawPiece();
+
+    // Check for collision and place if at bottom or other piece
+    if (pieceY >= boardHeight - currentPiece.length || checkCollision()) {
+        pieceY--; // Move back up to last valid position
+        placePieceOnBoard();
+        
+        // Clear lines, update score, etc. here
+
+        // Start new piece
+        currentPiece = createPiece();
+        pieceX = Math.floor(boardWidth / 2) - Math.floor(currentPiece[0].length / 2);
+        pieceY = 0;
+
+        if (checkCollision()) {
+            alert('Game Over');
+            clearInterval(intervalId);
+        } else {
+            drawPiece();
+        }
+    }
+}
+
+function checkCollision() {
+    for (let y = 0; y < currentPiece.length; y++) {
+        for (let x = 0; x < currentPiece[y].length; x++) {
+            if (currentPiece[y][x] && 
+                (board[pieceY + y] === undefined || 
+                 board[pieceY + y][pieceX + x] !== undefined)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+function placePieceOnBoard() {
+    for (let y = 0; y < currentPiece.length; y++) {
+        for (let x = 0; x < currentPiece[y].length; x++) {
+            if (currentPiece[y][x]) {
+                board[pieceY + y][pieceX + x] = 1;
+            }
+        }
+    }
+}
+
+function startGame() {
+    game.innerHTML = ''; // Clear the game area
+    board.forEach(row => row.fill(0)); // Reset the board
+    
+    currentPiece = createPiece();
+    pieceX = Math.floor(boardWidth / 2) - Math.floor(currentPiece[0].length / 2);
+    pieceY = 0;
+
+    drawPiece();
+
+    intervalId = setInterval(() => movePiece('down'), 1000); // Move down every second
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft') movePiece('left');
+        else if (e.key === 'ArrowRight') movePiece('right');
+        else if (e.key === 'ArrowDown') movePiece('down');
+        // Add rotation logic here with ArrowUp
+    });
+}
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>俄罗斯方块 (Tetris)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #202030;
+            min-height: 100vh;
+            gap: 20px;
+        }
+
+        /* 主游戏容器 */
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* 游戏板的CSS网格布局 */
+        #grid {
+            display: grid;
+            /* 定义10列，每列宽度固定 */
+            grid-template-columns: repeat(10, 30px); 
+            /* 定义20行，高度固定 */
+            grid-template-rows: repeat(20, 30px);
+            border: 5px solid #444;
+            background-color: #111;
+        }
+
+        /* 单个方块单元格的样式 */
+        .cell {
+            width: 30px;
+            height: 30px;
+            box-sizing: border-box;
+            border: 1px solid rgba(255, 255, 255, 0.05); /* 轻微的网格线 */
+        }
+
+        /* 方块颜色定义 (通过JS添加) */
+        .I { background-color: #0ff; border: 1px solid #08c; } /* 青色 */
+        .J { background-color: #00f; border: 1px solid #00a; } /* 蓝色 */
+        .L { background-color: #ff7; border: 1px solid #fa7; } /* 黄色/橙色 */
+        .O { background-color: #ffff; border: 1px solid #ccc; } /* 青白 */
+        .S { background-color: #0f0; border: 1px solid #08c; } /* 绿色 */
+        .T { background-color: #f0f; border: 1px solid #a0a; } /* 紫色 */
+        .Z { background-color: #f00; border: 1px solid #c00; } /* 红色 */
+
+        /* 侧边信息面板 */
+        #sidebar {
+            width: 200px;
+            padding: 20px;
+            background-color: #333;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        #sidebar h2 {
+            color: #fff;
+            border-bottom: 2px solid #555;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+
+        #score, #next-piece-display {
+            margin-bottom: 30px;
+        }
+
+        #score p {
+            font-size: 2em;
+            color: #fff;
+        }
+        
+        /* 下一个方块预览区 */
+        #next-piece-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(4, 1fr);
+            width: 120px; /* 调整预览尺寸 */
+            height: 120px;
+            margin-top: 10px;
+        }
+
+        /* 游戏状态提示 */
+        #game-over {
+            position: absolute;
+            font-size: 3em;
+            color: red;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            display: none; /* 默认隐藏 */
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- 游戏主网格，所有方块都将通过JavaScript插入到这里 -->
+        <div id="grid"></div>
+        <div id="game-over">GAME OVER!</div>
+    </div>
+
+    <div id="sidebar">
+        <h2>得分</h2>
+        <div id="score">
+            <p>0</p>
+        </div>
+
+        <h2>下一个方块</h2>
+        <div id="next-piece-display">
+             <!-- 预览网格，用于显示下一个方块 -->
+            <div id="next-piece-grid">
+                <!-- 这里由JS填充4x4的格子 -->
+            </div>
+        </div>
+
+        <p style="margin-top: 30px; color: #aaa;">
+            使用方向键移动和旋转，空格键软降。
+        </p>
+    </div>
+
+
+<script>
+/**
+ * =============================================
+ *          俄罗斯方块游戏逻辑 (JavaScript)
+ * =============================================
+ */
+
+// --- 1. 常量定义 ---
+const GRID_WIDTH = 10;
+const GRID_HEIGHT = 20;
+const SHAPES = {
+    'I': [
+        [0, 1, 0, 0],
+        [0, 1, 0, 0],
+        [0, 1, 0, 0],
+        [0, 1, 0, 0]
+    ], // I (青色)
+    'J': [
+        [0, 1, 0],
+        [0, 1, 0],
+        [1, 1, 0]
+    ], // J (蓝色)
+    'L': [
+        [0, 1, 0],
+        [0, 1, 0],
+        [0, 0, 1]
+    ], // L (橙色/黄色)
+    'O': [
+        [1, 1],
+        [1, 1]
+    ], // O (白色)
+    'S': [
+        [0, 1, 1],
+        [1, 1, 0],
+        [0, 0, 0]
+    ], // S (绿色)
+    'T': [
+        [0, 1, 0],
+        [1, 1, 1],
+        [0, 0, 0]
+    ], // T (紫色)
+    'Z': [
+        [1, 1, 0],
+        [0, 1, 1],
+        [0, 0, 0]
+    ]  // Z (红色)
+};
+
+const COLORS = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
+
+// --- 2. 游戏状态变量 ---
+let board = []; // 存储所有已经落下的方块的颜色/类型
+let currentPiece = {
+    shape: null,
+    color: null,
+    x: 0, // 当前网格的起始X坐标
+    y: 0  // 当前网格的起始Y坐标
+};
+let nextPiece = {};
+let score = 0;
+let gameLoopInterval = setInterval(gameTick, 1000); // 每秒下落一次
+
+// --- 3. DOM元素引用 ---
+const gridElement = document.getElementById('grid');
+const scoreElement = document.querySelector('#score p');
+const nextDisplay = document.getElementById('next-piece-display');
+const gameOverElement = document.getElementById('game-over');
+
+
+/**
+ * 初始化游戏网格和状态
+ */
+function initializeGame() {
+    // 1. 清空并设置主网格的DOM结构 (20行 x 10列)
+    gridElement.innerHTML = '';
+    for (let y = 0; y < GRID_HEIGHT; y++) {
+        for (let x = 0; x < GRID_WIDTH; x++) {
+            const cell = document.createElement('div');
+            cell.classList.add('cell');
+            // 使用 data属性存储坐标，方便后续查找和渲染
+            cell.dataset.x = x;
+            cell.dataset.y = y;
+            gridElement.appendChild(cell);
+        }
+    }
+
+    // 2. 初始化内部数据结构 (所有单元格都是空的)
+    board = Array(GRID_HEIGHT).fill(0).map(() => Array(GRID_WIDTH).fill(null));
+
+    // 3. 生成第一个方块和下一个方块
+    nextPiece = generateRandomPiece();
+    currentPiece = { shape: nextPiece.shape, color: nextPiece.color, x: Math.floor(GRID_WIDTH / 2) - 1, y: 0 };
+
+    updateScoreDisplay();
+    renderNextPiece(nextPiece);
+    drawBoard(); // 第一次渲染，显示空状态
+}
+
+
+/**
+ * 生成一个随机方块
+ */
+function generateRandomPiece() {
+    const randomColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+    return {
+        shape: SHAPES[randomColor],
+        color: randomColor
+    };
+}
+
+// --- 4. 渲染函数 (将JS状态映射到HTML DOM) ---
+
+/**
+ * 清除并绘制当前方块在网格上的所有落点
+ */
+function drawBoard() {
+    // 1. 清除整个游戏板的视觉状态（只保留已固定的方块）
+    document.querySelectorAll('.cell').forEach(cell => {
+        cell.className = 'cell'; // 重置所有类名，清除当前浮动方块颜色
+    });
+
+    // 2. 绘制已固定的方块 (board[][]中的非null值)
+    for (let y = 0; y < GRID_HEIGHT; y++) {
+        for (let x = 0; x < GRID_WIDTH; x++) {
+            const cellIndex = Math.floor(x / 30); // 使用近似索引，实际上更精确的查找是遍历DOM
+            if (board[y][x]) {
+                // 在真实游戏中，这里应该找到对应的DOM元素并赋予颜色。
+                // 为了简化代码，我们直接通过网格坐标定位到第(y*10 + x)个cell
+                const cell = gridElement.children[y * GRID_WIDTH + x];
+                if (cell && board[y][x] !== null) {
+                    cell.className = `cell ${board[y][x]} occupied`; 
+                }
+            }
+        }
+    }
+
+    // 3. 绘制当前移动方块
+    const pieceShape = currentPiece.shape;
+    for (let y = 0; y < pieceShape.length; y++) {
+        for (let x = 0; x < pieceShape[y].length; x++) {
+            if (pieceShape[y][x] && pieceShape[y][x] === 1) {
+                const drawX = currentPiece.x + x;
+                const drawY = currentPiece.y + y;
+
+                // 确保坐标在范围内，并且是当前方块的颜色类型
+                if (drawX >= 0 && drawX < GRID_WIDTH && drawY >= 0 && drawY < GRID_HEIGHT) {
+                     const cell = gridElement.children[drawY * GRID_WIDTH + drawX];
+                    if (cell) {
+                        // 将当前方块的颜色应用到DOM上
+                        cell.className = `cell ${currentPiece.color}`; 
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 更新得分显示和下一个方块预览
+ */
+function updateScoreDisplay() {
+    scoreElement.textContent = score;
+}
+
+/**
+ * 在侧边栏绘制下一个即将出现的方块
+ */
+function renderNextPiece(piece) {
+    nextDisplay.innerHTML = ''; // 清空旧内容
+    const shape = piece.shape;
+    
+    // 创建一个4x4的预览网格
+    for (let i = 0; i < 16; i++) {
+        const cell = document.createElement('div');
+        cell.classList.add('cell');
+        cell.dataset.y = Math.floor(i / 4);
+        cell.dataset.x = i % 4;
+        nextDisplay.appendChild(cell);
+    }
+
+    // 填充方块形状到预览网格中
+    for (let y = 0; y < shape.length; y++) {
+        for (let x = 0; x < shape[y].length; x++) {
+            if (shape[y][x] === 1) {
+                const cell = nextDisplay.children[(y * 4) + x];
+                cell.className = `cell ${piece.color}`;
+            }
+        }
+    }
+}
+
+// --- 5. 碰撞检测与移动逻辑 ---
+
+/**
+ * 检查给定位置 (x, y) 是否安全，或者是否撞击到固定方块/边界。
+ * @param {number[][]} shape - 当前尝试的形状矩阵
+ * @param {number} offsetX - 偏移量X
+ * @param {number} offsetY - 偏移量Y
+ * @returns {boolean} 如果碰撞则为false，否则为true。
+ */
+function checkCollision(shape, newX, newY) {
+    for (let y = 0; y < shape.length; y++) {
+        for (let x = 0; x < shape[y].length; x++) {
+            if (shape[y][x] === 1) {
+                const targetX = newX + x;
+                const targetY = newY + y;
+
+                // 边界检查：是否超出左右或底部
+                if (targetX < 0 || targetX >= GRID_WIDTH || targetY >= GRID_HEIGHT) {
+                    return false; // 撞墙或越界
+                }
+                // 顶部越界（游戏开始时允许方块在y<0处生成）
+                if (targetY < 0) continue; 
+
+                // 固定方块碰撞检查：是否与已落下的方块重叠
+                if (board[targetY][targetX] !== null && board[targetY][targetX] !== 'empty') {
+                    return false; // 与固定方块碰撞
+                }
+            }
+        }
+    }
+    return true; // 没有碰撞，位置安全
+}
+
+/**
+ * 尝试移动当前方块 (左右或下落)
+ * @param {number} dx - X方向位移 (-1, 0, 1)
+ * @param {number} dy - Y方向位移 (-1, 0, 1)
+ * @returns {boolean} 如果成功移动则为true，否则为false。
+ */
+function movePiece(dx, dy) {
+    const newX = currentPiece.x + dx;
+    const newY = currentPiece.y + dy;
+
+    if (checkCollision(currentPiece.shape, newX, newY)) {
+        // 移动成功：更新状态并重置DOM渲染
+        currentPiece.x = newX;
+        currentPiece.y = newY;
+        drawBoard();
+        return true;
+    } else {
+        // 碰撞发生：不改变状态，只通知调用者
+        return false;
+    }
+}
+
+
+/**
+ * 处理方块锁定到网格并检查是否消除行
+ */
+function lockPiece() {
+    const shape = currentPiece.shape;
+    const color = currentPiece.color;
+
+    // 1. 将当前形状固定到内部数据结构 (board) 中
+    for (let y = 0; y < shape.length; y++) {
+        for (let x = 0; x < shape[y].length; x++) {
+            if (shape[y][x] === 1) {
+                const targetX = currentPiece.x + x;
+                const targetY = currentPiece.y + y;
+
+                // 只有在有效且不在顶部（即已落下）的方块才记录到board中
+                if (targetY >= 0) {
+                    board[targetY][targetX] = color;
+                }
+            }
+        }
+    }
+
+    // 2. 清理行检查
+    let linesCleared = 0;
+    for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+        const isRowFull = board[y].every(cell => cell !== null);
+        if (isRowFull) {
+            linesCleared++;
+            // 清空这一行，并把所有上方方块向下移动一行
+            for (let x = 0; x < GRID_WIDTH; x++) {
+                board[y][x] = null; // 当前行被清除
+            }
+        }
+    }
+
+    // 3. 更新得分和状态
+    if (linesCleared > 0) {
+        score += [0, 100, 300, 500, 800][linesCleared]; // 根据消除行数计分
+        updateScoreDisplay();
+    }
+
+    // 4. 生成新方块，重置当前状态
+    currentPiece = nextPiece;
+    nextPiece = generateRandomPiece();
+    renderNextPiece(nextPiece);
+
+    // 5. 检测游戏结束 (如果新的方块生成位置立刻发生碰撞)
+    if (!checkCollision(currentPiece.shape, currentPiece.x, currentPiece.y)) {
+        gameOver();
+    } else {
+        drawBoard(); // 重绘，显示新方块
+    }
+}
+
+/**
+ * 核心游戏循环：处理重力下落
+ */
+function gameTick() {
+    // 尝试向下移动一步 (dy=1)
+    if (movePiece(0, 1)) {
+        // 如果成功移动，什么都不做，等待下次滴答
+    } else {
+        // 无法向下移动（撞到地面或方块）
+        lockPiece();
+    }
+}
+
+
+/**
+ * 处理旋转逻辑
+ * 注意：俄罗斯方块的旋转需要复杂的矩阵转置和翻转，这里实现一个基础的版本。
+ */
+function rotatePiece() {
+    const oldShape = currentPiece.shape;
+    let newShape = [];
+
+    // 1. 获取形状的尺寸 (假设是N x M)
+    const N = oldShape.length;
+    const M = oldShape[0].length;
+
+    // 2. 创建新的M x N矩阵来存储旋转后的数据
+    newShape = Array(M).fill(0).map(() => Array(N).fill(0));
+
+    // 3. 执行转置和翻转 (核心数学逻辑)
+    for (let y = 0; y < N; y++) {
+        for (let x = 0; x < M; x++) {
+            newShape[x][N - 1 - y] = oldShape[y][x]; // 转置并反转Y轴
+        }
+    }
+
+    // 4. 检查旋转后的形状是否合法（需要与当前位置进行碰撞检测）
+    if (checkCollision(newShape, currentPiece.x, currentPiece.y)) {
+        currentPiece.shape = newShape;
+        drawBoard();
+    } else {
+        console.log("旋转失败，发生碰撞。");
+    }
+}
+
+/**
+ * 软降（Soft Drop）功能：立即将方块下落一步
+ */
+function softDrop() {
+     // 调用 movePiece(0, 1) 的逻辑，但不需要等待游戏循环
+    if (movePiece(0, 1)) {
+        score += 1; // Soft drop 得分加成
+        updateScoreDisplay();
+        drawBoard();
+        // 强制立即触发一次锁定检查（尽管在实际游戏中不会这样做）
+        // 但为了模拟即时下落，我们直接调用游戏循环的逻辑来处理碰撞后的锁定。
+    } else {
+        // 如果无法再向下移动，则执行锁定操作
+        lockPiece();
+    }
+}
+
+/**
+ * 键盘控制事件监听器
+ */
+document.addEventListener('keydown', (e) => {
+    let moved = false;
+    switch(e.key) {
+        case 'ArrowLeft': // 左移
+            moved = movePiece(-1, 0);
+            break;
+        case 'ArrowRight': // 右移
+            moved = movePiece(1, 0);
+            break;
+        case 'ArrowDown': // 下落 (Soft Drop)
+            softDrop();
+            e.preventDefault(); // 防止页面滚动
+            break;
+        case 'ArrowUp': // 旋转
+            rotatePiece();
+            break;
+        case ' ': // 空格键 (Hard Drop/加速下落 - 这里用做软降的替代，但逻辑已包含在softDrop中)
+             // 为了防止空格键冲突和重复处理，我们只使用箭头键控制。
+             // 实际硬降需要一个额外的机制来瞬间锁定方块。
+            break;
+    }
+
+    if (moved) {
+        drawBoard(); // 无论是否移动，都需要重绘一次界面
+    }
+});
+
+
+/**
+ * 游戏结束处理
+ */
+function gameOver() {
+    clearInterval(gameLoopInterval);
+    gameOverElement.style.display = 'block';
+    // 禁用所有输入监听器 (可选)
+}
+
+// --- 初始化并启动游戏 ---
+initializeGame();
+
+</script>
+
+</body>
+</html>
